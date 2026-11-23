@@ -3,20 +3,33 @@
 :root {
   --bg: #eef1f5;          /* 배경: 한색계열 밝은 회색 */
   --block-bg: #ffffff;    /* 블록/카드 배경 */
+  --section-bg: #e2e6ec;  /* 섹션 묶음 배경: 배경색보다 조금 어두운 회색 */
   --border: #1a1a1a;      /* 검정에 가까운 테두리 */
   --text: #1a1a1a;
   --text-sub: #5b6573;
   --accent: #3b6fd4;      /* 포인트 색(버튼 hover, 태그) */
   --tag-bg: #dde6f7;
+  --header-bg: #2b3038;   /* 상단 헤더(로고/메뉴) 배경: 짙은 회색 */
+  --header-text: #ffffff; /* 상단 헤더 글자색 */
   --radius: 8px;          /* 버튼/블록 둥글기 */
+  /* [넓은 화면 꾸미기] 취소하려면: --container-width를 960px로, --bg-pattern을 none으로 */
+  --container-width: 1100px; /* 본문 최대 폭 (원래 960px) */
+  --bg-pattern: radial-gradient(#cfd6e0 1.6px, transparent 1.6px); /* 배경 점 무늬 */
+  --bg-pattern-size: 18px 18px; /* 점 간격 */
   --font: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
 }
 
 * { box-sizing: border-box; }
 
+/* hidden 속성이 붙은 요소는 항상 숨김
+   (.btn/.block 등의 display 설정이 hidden을 덮어쓰지 않도록) */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--bg-pattern);
+  background-size: var(--bg-pattern-size);
   color: var(--text);
   font-family: var(--font);
   font-size: 16px;
@@ -31,14 +44,14 @@ p  { margin: 0 0 12px; }
 a  { color: inherit; }
 
 /* ----- 레이아웃 ----- */
-.container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+.container { max-width: var(--container-width); margin: 0 auto; padding: 24px 16px; }
 
 /* ----- 헤더/푸터 (js/app.js가 채움) ----- */
-.site-header { background: var(--block-bg); border-bottom: 2px solid var(--border); }
+.site-header { background: var(--header-bg); color: var(--header-text); border-bottom: 2px solid var(--border); }
 .site-header .container { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 16px; }
 .site-logo { font-weight: bold; font-size: 1.2rem; text-decoration: none; }
 .site-nav a { margin-left: 16px; text-decoration: none; }
-.site-nav a:hover { color: var(--accent); }
+.site-nav a:hover { color: var(--tag-bg); text-decoration: underline; } /* 어두운 배경이라 밝은 색 + 밑줄로 강조 */
 
 /* ----- 블록(카드) ----- */
 .block {
@@ -101,8 +114,23 @@ input, select, textarea {
 .profile-info { flex: 1; min-width: 240px; }
 
 /* ----- S01 Home ----- */
-.hero { text-align: center; }
-.hero img { max-width: 100%; max-height: 240px; border: 2px solid var(--border); border-radius: var(--radius); background: var(--tag-bg); }
+/* 대표 이미지 상자: 왼쪽에 배치, 섹션(.page-section)과 같은 얇은 테두리 + 어두운 회색 배경 */
+.hero-image-box {
+  width: fit-content;
+  max-width: 100%;
+  padding: 12px;
+  border: 1px solid var(--text-sub);
+  border-radius: var(--radius);
+  background: var(--section-bg);
+}
+.hero-image-box img {
+  display: block;
+  max-width: 100%;
+  max-height: 240px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--tag-bg);
+}
 
 /* ----- S05 경험기록 상세: 타임라인 ----- */
 /* 바깥 틀은 .block 서식(흰 배경/테두리/둥근 모서리)을 함께 사용 */
@@ -163,3 +191,105 @@ input, select, textarea {
   color: var(--accent);
   font-weight: 700;
 }
+
+/* ----- 태그 필터 (S03/S04 공통: 드롭다운 다중선택) ----- */
+/* 정렬 버튼과 태그 필터를 한 줄에 배치 (좁으면 줄바꿈) */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+.tag-filter {
+  position: relative;  /* 펼쳐지는 리스트의 기준 위치 */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+/* 펼쳐지는 태그 리스트: 태그가 많아지면 스크롤 */
+.tag-filter-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  margin: 4px 0 0;
+  padding: 8px;
+  min-width: 200px;
+  max-height: 240px;
+  overflow-y: auto;
+  list-style: none;
+}
+/* 공통 label/input 서식(굵게, 너비 100%)을 리스트 안에서는 덮어씀 */
+.tag-filter-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 8px;
+  font-weight: normal;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.tag-filter-list label:hover { background: var(--tag-bg); }
+.tag-filter-list input { width: auto; margin: 0; }
+/* 선택된 태그 칩 (누르면 선택 취소) */
+.tag-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;  /* 칩 사이 간격 */
+}
+.tag-chip {
+  font: inherit;
+  font-size: 0.85rem;
+  margin: 0;
+  cursor: pointer;
+}
+.tag-chip:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ----- S04 페르소나 상세: 상단 정보 ----- */
+/* 페르소나 설명: 왼쪽 포인트 색 세로줄로 "설명" 영역임을 표시 */
+.persona-desc {
+  margin: 16px 0;
+  padding: 4px 0 4px 12px;
+  border-left: 4px solid var(--accent);
+}
+/* 설명 본문: 본문보다 크고 굵게 */
+.persona-desc p {
+  margin: 2px 0 0;
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+/* 페르소나 태그: 정렬 버튼(.btn)과 같은 모양, 단 누르는 버튼은 아니므로 hover 효과 없음 */
+.persona-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.persona-tags .btn {
+  cursor: default;
+  padding: 4px 14px;  /* 정렬 버튼(8px 16px)보다 세로를 조금 줄임 */
+}
+.persona-tags .btn:hover { background: var(--block-bg); }
+
+/* ----- 섹션 묶음 (S01 Home / S04 페르소나 상세 / S05 경험기록 상세 공통) ----- */
+/* 내용을 얇은 테두리 + 조금 어두운 회색 배경으로 묶고, 섹션 사이 간격을 넓게 */
+.page-section {
+  margin-top: 40px;
+  padding: 20px;
+  border: 1px solid var(--text-sub);
+  border-radius: var(--radius);
+  background: var(--section-bg);
+}
+.page-section:first-child { margin-top: 0; }               /* 페이지 맨 위 섹션은 위 간격 없음 */
+.page-section > :first-child { margin-top: 0; }            /* 섹션 안 첫 제목의 위 여백 제거 */
+.page-section > :last-child { margin-bottom: 0; }          /* 섹션 안 마지막 요소의 아래 여백 제거 */
+/* 섹션이 연달아 나오면 사이 간격 */
+.page-section + .page-section { margin-top: 70px; }
+
+/* S04 페르소나 상세 섹션 1(이름/설명/생성일/태그)만 흰 배경 */
+#persona-detail.page-section { background: var(--block-bg); }
+
+/* S04 섹션 2: 경험 기록이 적거나 없어도 카드 2줄 정도 높이를 기본으로 확보
+   (카드 1개 높이 약 170px x 2줄 + 카드 사이 간격 16px) */
+#experience-list { min-height: 360px; align-content: start; }

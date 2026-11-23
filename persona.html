@@ -10,15 +10,22 @@
   <header id="site-header" class="site-header"></header>
 
   <main class="container">
-    <!-- 이름, 소개, 태그, 생성일 -->
-    <section id="persona-detail"></section>
+    <!-- 섹션 1: 이름, 설명, 생성일, 태그 -->
+    <section id="persona-detail" class="page-section"></section>
 
-    <h2>경험 기록</h2>
-    <div id="sort-buttons"></div>
-    <div id="experience-list" class="grid" style="margin-top:16px"></div>
-    <p style="text-align:center; margin-top:16px">
-      <button id="more-btn" class="btn" hidden>더보기</button>
-    </p>
+    <!-- 섹션 2: 경험 기록 목록 -->
+    <section class="page-section">
+      <h2>경험 기록</h2>
+      <!-- 정렬 버튼 + 태그 필터 -->
+      <div class="toolbar">
+        <div id="sort-buttons"></div>
+        <div id="experience-tag-filter"></div>
+      </div>
+      <div id="experience-list" class="grid" style="margin-top:16px"></div>
+      <p style="text-align:center; margin-top:16px">
+        <button id="more-btn" class="btn" hidden>더보기</button>
+      </p>
+    </section>
   </main>
 
   <script src="js/data.js"></script>

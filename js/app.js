@@ -27,6 +27,85 @@ function sortByLatest(list) {
   return [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+// 목록에서 태그를 중복 없이 모으기 (가나다순)
+function collectTags(list) {
+  return [...new Set(list.flatMap((item) => item.tags))].sort((a, b) => a.localeCompare(b, "ko"));
+}
+
+// 선택한 태그 중 하나라도 가진 항목만 남기기 (선택이 없으면 전체)
+function filterByTags(list, selectedTags) {
+  if (selectedTags.length === 0) return list;
+  return list.filter((item) => item.tags.some((t) => selectedTags.includes(t)));
+}
+
+// --- 태그 필터 (드롭다운 다중선택, S03/S04에서 재사용) ---
+// containerId: 필터를 넣을 요소 id
+// allTags: 선택지로 보여줄 태그 배열
+// onChange: 선택이 바뀔 때마다 호출, 선택된 태그 배열을 넘겨줌
+function setupTagFilter(containerId, allTags, onChange) {
+  const box = document.getElementById(containerId);
+  const selected = new Set(); // 현재 선택된 태그
+
+  box.classList.add("tag-filter");
+  box.innerHTML = `
+    <button type="button" class="btn tag-filter-toggle" aria-expanded="false"></button>
+    <span class="tag-filter-chips"></span>
+    <ul class="tag-filter-list block" hidden>
+      ${
+        allTags.length
+          ? allTags.map((t) => `<li><label><input type="checkbox" value="${t}"> ${t}</label></li>`).join("")
+          : '<li class="meta">등록된 태그가 없습니다</li>'
+      }
+    </ul>`;
+
+  const toggleBtn = box.querySelector(".tag-filter-toggle");
+  const chips = box.querySelector(".tag-filter-chips");
+  const list = box.querySelector(".tag-filter-list");
+
+  // 태그 리스트 펼치기/접기
+  function setOpen(open) {
+    list.hidden = !open;
+    toggleBtn.setAttribute("aria-expanded", open);
+  }
+
+  // 선택 상태를 화면(버튼 글자, 체크박스, 선택된 태그 칩)에 반영하고 onChange 호출
+  function update() {
+    toggleBtn.textContent = selected.size ? `태그 (${selected.size}) ▾` : "태그 ▾";
+    list.querySelectorAll("input").forEach((cb) => (cb.checked = selected.has(cb.value)));
+    // 선택된 태그는 칩으로 표시, 칩의 x를 누르면 그 태그만 선택 취소
+    chips.innerHTML = [...selected]
+      .map((t) => `<button type="button" class="tag tag-chip" data-tag="${t}">${t} ✕</button>`)
+      .join("");
+    onChange([...selected]);
+  }
+
+  toggleBtn.onclick = () => setOpen(list.hidden);
+
+  // 체크박스로 선택/선택 취소 (여러 개 선택 가능)
+  list.onchange = (ev) => {
+    const cb = ev.target;
+    if (cb.checked) selected.add(cb.value);
+    else selected.delete(cb.value);
+    update();
+  };
+
+  // 칩 x 클릭: 해당 태그 선택 취소
+  chips.onclick = (ev) => {
+    ev.stopPropagation(); // 칩이 다시 그려져도 리스트가 닫히지 않도록
+    const chip = ev.target.closest(".tag-chip");
+    if (!chip) return;
+    selected.delete(chip.dataset.tag);
+    update();
+  };
+
+  // 필터 바깥을 클릭하면 리스트 닫기
+  document.addEventListener("click", (ev) => {
+    if (!box.contains(ev.target)) setOpen(false);
+  });
+
+  update(); // 처음 한 번 그리기
+}
+
 // --- 공통 헤더/푸터 (모든 페이지에서 자동 삽입) ---
 function renderLayout() {
   const links = [
@@ -90,27 +169,17 @@ function renderAbout() {
   document.getElementById("about-dislikes").innerHTML = tagsHtml(profile.dislikes);
 }
 
-// S03 페르소나 목록 (태그 필터)
-function renderPersonaList(selectedTag = "전체") {
-  // 모든 페르소나의 태그를 중복 없이 모음
-  const allTags = ["전체", ...new Set(personas.flatMap((p) => p.tags))];
-
-  document.getElementById("tag-filter").innerHTML = allTags
-    .map((t) => `<button class="btn" ${t === selectedTag ? 'aria-pressed="true"' : ""} data-tag="${t}">${t}</button>`)
-    .join(" ");
-
-  const shown = selectedTag === "전체" ? personas : personas.filter((p) => p.tags.includes(selectedTag));
-  document.getElementById("persona-list").innerHTML =
-    shown.map(personaCardHtml).join("") || '<p class="empty">해당 태그의 페르소나가 없습니다</p>';
-
-  // 버튼 클릭 시 해당 태그로 다시 그리기
-  document.querySelectorAll("#tag-filter button").forEach((btn) => {
-    btn.onclick = () => renderPersonaList(btn.dataset.tag);
+// S03 페르소나 목록 (태그 필터: 다중선택, 선택한 태그 중 하나라도 있으면 표시)
+function renderPersonaList() {
+  setupTagFilter("tag-filter", collectTags(personas), (selectedTags) => {
+    const shown = filterByTags(personas, selectedTags);
+    document.getElementById("persona-list").innerHTML =
+      shown.map(personaCardHtml).join("") || '<p class="empty">선택한 태그의 페르소나가 없습니다</p>';
   });
 }
 
-// S04 페르소나 상세 (정렬: 최신순/공감순, 처음 5개 -> 더보기 시 10개)
-function renderPersonaDetail(sortBy = "latest", limit = 5) {
+// S04 페르소나 상세 (정렬: 최신순/공감순, 처음 5개 -> 더보기 시 10개, 태그 필터)
+function renderPersonaDetail() {
   const persona = findPersona(getParam("id"));
   if (!persona) {
     document.getElementById("persona-detail").innerHTML = '<p class="empty">존재하지 않는 페르소나입니다</p>';
@@ -119,33 +188,61 @@ function renderPersonaDetail(sortBy = "latest", limit = 5) {
 
   document.getElementById("persona-detail").innerHTML = `
     <h1>${persona.name}</h1>
-    <p>${persona.description}</p>
-    <div>${tagsHtml(persona.tags)}</div>
-    <p class="meta">생성일 ${persona.createdAt}</p>`;
+    <div class="persona-desc">
+      <p>${persona.description}</p>
+    </div>
+    <p class="meta">생성일 ${persona.createdAt}</p>
+    <div class="persona-tags">
+      ${persona.tags.map((t) => `<span class="btn">#${t}</span>`).join("")}
+    </div>`;
 
-  // 이 페르소나의 경험 기록만 정렬 (공감순 동률이면 최신순)
-  const list = sortByLatest(experiences.filter((e) => e.personaId === persona.id));
-  if (sortBy === "likes") list.sort((a, b) => b.likes - a.likes); // sort는 안정 정렬이라 동률은 최신순 유지
+  // 이 페르소나의 경험 기록 전체
+  const myExperiences = experiences.filter((e) => e.personaId === persona.id);
 
-  const shown = list.slice(0, limit);
-  document.getElementById("experience-list").innerHTML =
-    shown.map(experienceCardHtml).join("") || '<p class="empty">아직 등록된 경험 기록이 없습니다</p>';
+  // 목록 상태 (바뀔 때마다 drawList()로 다시 그림)
+  let sortBy = "latest"; // "latest" 최신순 / "likes" 공감순
+  let limit = 5;         // 처음 5개, 더보기 시 10개
+  let selectedTags = []; // 태그 필터에서 선택한 태그
 
-  // 정렬 버튼 (현재 선택 강조)
-  document.getElementById("sort-buttons").innerHTML = `
-    <button class="btn" data-sort="latest" ${sortBy === "latest" ? 'aria-pressed="true"' : ""}>최신순</button>
-    <button class="btn" data-sort="likes" ${sortBy === "likes" ? 'aria-pressed="true"' : ""}>공감순</button>`;
-  document.querySelectorAll("#sort-buttons button").forEach((btn) => {
-    btn.onclick = () => renderPersonaDetail(btn.dataset.sort, 5); // 정렬 바꾸면 처음 5개부터
+  function drawList() {
+    // 태그 필터 -> 정렬 (공감순 동률이면 최신순)
+    const list = sortByLatest(filterByTags(myExperiences, selectedTags));
+    if (sortBy === "likes") list.sort((a, b) => b.likes - a.likes); // sort는 안정 정렬이라 동률은 최신순 유지
+
+    let emptyMsg = "아직 등록된 경험 기록이 없습니다";
+    if (myExperiences.length > 0) emptyMsg = "선택한 태그의 경험 기록이 없습니다";
+    document.getElementById("experience-list").innerHTML =
+      list.slice(0, limit).map(experienceCardHtml).join("") || `<p class="empty">${emptyMsg}</p>`;
+
+    // 정렬 버튼 (현재 선택 강조)
+    document.getElementById("sort-buttons").innerHTML = `
+      <button class="btn" data-sort="latest" ${sortBy === "latest" ? 'aria-pressed="true"' : ""}>최신순</button>
+      <button class="btn" data-sort="likes" ${sortBy === "likes" ? 'aria-pressed="true"' : ""}>공감순</button>`;
+    document.querySelectorAll("#sort-buttons button").forEach((btn) => {
+      btn.onclick = () => {
+        sortBy = btn.dataset.sort;
+        limit = 5; // 정렬 바꾸면 처음 5개부터
+        drawList();
+      };
+    });
+
+    // 더보기 버튼 (5개만 보이는 상태에서 더 있을 때만 표시)
+    const moreBtn = document.getElementById("more-btn");
+    moreBtn.hidden = !(limit === 5 && list.length > 5);
+    moreBtn.onclick = () => {
+      limit = 10;
+      drawList();
+    };
+  }
+
+  // 태그 필터: 선택이 바뀌면 처음 5개부터 다시 그림 (처음 호출 때 drawList()도 같이 실행됨)
+  setupTagFilter("experience-tag-filter", collectTags(myExperiences), (tags) => {
+    selectedTags = tags;
+    limit = 5;
+    drawList();
   });
-
-  // 더보기 버튼 (5개만 보이는 상태에서 더 있을 때만 표시)
-  const moreBtn = document.getElementById("more-btn");
-  moreBtn.hidden = !(limit === 5 && list.length > 5);
-  moreBtn.onclick = () => renderPersonaDetail(sortBy, 10);
 }
 
-// S05 경험기록 상세 (공감은 브라우저당 기록 1개에 1회, 다시 누르면 취소: localStorage에 저장)
 // S05 상황/과정/결과를 세로 타임라인으로 그린다
 // 내용이 비어 있는 단계는 건너뛰고, 마지막 단계는 CSS(:last-child)에서 포인트 색으로 강조
 function timelineHtml(e) {
@@ -181,12 +278,15 @@ function renderExperienceDetail() {
   function draw() {
     const liked = localStorage.getItem(likeKey) === "1";
     document.getElementById("experience-detail").innerHTML = `
-      <h1>${e.title}</h1>
-      <p class="meta">
-        <a href="persona.html?id=${e.personaId}">${persona ? persona.name : ""}</a>
-        / 생성일 ${e.createdAt} / 경험 기간 ${e.period}
-      </p>
-      <div>${tagsHtml(e.tags)}</div>
+      <!-- 섹션: 제목 ~ 경험 기간 -->
+      <section class="page-section">
+        <h1>${e.title}</h1>
+        <p class="meta">
+          <a href="persona.html?id=${e.personaId}">${persona ? persona.name : ""}</a>
+          / 생성일 ${e.createdAt} / 경험 기간 ${e.period}
+        </p>
+      </section>
+      <div style="margin-top:16px">${tagsHtml(e.tags)}</div>
 
       ${timelineHtml(e)}
 
