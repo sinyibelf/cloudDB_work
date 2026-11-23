@@ -4,12 +4,12 @@
 
 // --- S01/S02 사이트 주인 정보 ---
 const profile = {
-  name: "이름을 적으세요",
-  affiliation: "소속을 적으세요 (예: OO대학교 OO학과)",
-  intro: "한 줄 소개를 적으세요",
+  name: "서지민",
+  affiliation: "강원대학교 AI융합&클라우드융합학과",
+  intro: "한줄소개",
   image: "images/profile.png",   // images/ 폴더에 넣은 파일명
-  likes: ["선호 키워드1", "선호 키워드2"],
-  dislikes: ["불호 키워드1", "불호 키워드2"],
+  likes: ["게임", "음악듣기", "그림", "부엉이"],
+  dislikes: ["벌레/곤충", "버섯"],
 };
 
 // --- Persona (페르소나) : 3개 ---
@@ -17,21 +17,21 @@ const personas = [
   {
     id: "p1",
     name: "학부생",
-    description: "페르소나 한 줄 설명을 적으세요",
+    description: "대학 학부생인 나",
     tags: ["학교", "공부"],
     createdAt: "2026-11-18",
   },
   {
     id: "p2",
     name: "자격증 준비생",
-    description: "페르소나 한 줄 설명을 적으세요",
+    description: "자격증을 준비하는 나",
     tags: ["자격증", "공부"],
     createdAt: "2026-11-18",
   },
   {
     id: "p3",
     name: "디지털 드로잉 창작자",
-    description: "페르소나 한 줄 설명을 적으세요",
+    description: "디지털 드로잉을 하는 나",
     tags: ["그림", "취미"],
     createdAt: "2026-11-18",
   },
