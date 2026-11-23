@@ -146,12 +146,12 @@ function renderPersonaDetail(sortBy = "latest", limit = 5) {
 }
 
 // S05 경험기록 상세 (공감은 브라우저당 기록 1개에 1회, 다시 누르면 취소: localStorage에 저장)
-// S05 상황/시도/결과를 세로 타임라인으로 그린다
+// S05 상황/과정/결과를 세로 타임라인으로 그린다
 // 내용이 비어 있는 단계는 건너뛰고, 마지막 단계는 CSS(:last-child)에서 포인트 색으로 강조
 function timelineHtml(e) {
   const steps = [
     { label: "상황", text: e.situation },
-    { label: "시도", text: e.attempt },
+    { label: "과정", text: e.attempt },
     { label: "결과", text: e.result },
   ];
   const items = steps
