@@ -16,13 +16,20 @@
 ```
 index.html / about.html / personas.html / persona.html / experience.html / questions.html
 css/style.css   # 모든 페이지 공통 서식 (맨 위 :root 변수로 색/둥글기 조정)
-js/data.js      # 더미 데이터 (프로필, 페르소나, 경험기록, 질문)
+js/config.js    # AppSync 엔드포인트 / API 키 (API_KEY는 직접 입력)
+js/api.js       # AppSync GraphQL 호출 (fetch + x-api-key)
+js/data.js      # 프로필(S01/S02) + DB 초기 입력용 샘플 데이터
 js/app.js       # 렌더링 로직
+docs/schema.graphql  # AppSync GraphQL 스키마 원문
 images/         # 이미지 (프로필: images/profile.png)
 ```
 
+## API 연결
+`js/config.js`의 `API_KEY`에 AppSync API 키를 넣으면 됩니다. 키가 없으면 화면에 안내 문구가 표시됩니다.
+경험 기록 본문(`content`)에 `상황: ...` / `과정: ...` / `결과: ...`를 줄바꿈으로 나눠 적으면 S05에서 타임라인으로 보입니다.
+
 ## 로컬에서 확인
-`index.html`을 브라우저로 열면 됩니다. (빌드 과정 없음)
+`index.html`을 브라우저로 열면 됩니다. (빌드 과정 없음, API 키 입력 필요)
 
 ## 배포 (S3 + CloudFront)
 S3 버킷은 비공개로 두고 OAC로 CloudFront만 접근하게 설정합니다. 정적 웹사이트 호스팅 기능은 사용하지 않습니다.

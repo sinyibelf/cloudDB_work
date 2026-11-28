@@ -293,3 +293,10 @@ input, select, textarea {
 /* S04 섹션 2: 경험 기록이 적거나 없어도 카드 2줄 정도 높이를 기본으로 확보
    (카드 1개 높이 약 170px x 2줄 + 카드 사이 간격 16px) */
 #experience-list { min-height: 360px; align-content: start; }
+
+/* 서버에서 받은 글의 줄바꿈을 그대로 보여주기 (경험 기록 본문, 질문/답변) */
+.pre-line { white-space: pre-line; }
+
+/* S04 페이지 이동 버튼 (더보기 이후) */
+.pager { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
+.pager[hidden] { display: none; }

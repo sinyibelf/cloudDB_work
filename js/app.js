@@ -1,4 +1,5 @@
-// ===== 렌더링 로직 (data.js의 데이터를 화면에 그린다) =====
+// ===== 렌더링 로직 (api.js로 받아온 데이터를 화면에 그린다) =====
+// 데이터 필드명은 docs/schema.graphql 기준이다 (personaId, experienceId, likeCount 등).
 
 // --- 공통 도우미 ---
 
@@ -7,24 +8,31 @@ function getParam(key) {
   return new URLSearchParams(location.search).get(key);
 }
 
-// id로 페르소나 찾기
-function findPersona(id) {
-  return personas.find((p) => p.id === id);
+// 서버에서 받은 글자를 innerHTML에 넣기 전에 반드시 거치는 함수 (방문자가 쓴 글 대비)
+function esc(value) {
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+  );
+}
+
+// 날짜 문자열(ISO)을 "YYYY-MM-DD"로 바꾸기 (브라우저 시간대 기준)
+function formatDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
 // 태그 배열 -> <span class="tag"> 묶음 HTML
 function tagsHtml(tags) {
-  return tags.map((t) => `<span class="tag">${t}</span>`).join("");
+  return tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("");
 }
 
-// 페르소나의 경험 기록 수
-function countExperiences(personaId) {
-  return experiences.filter((e) => e.personaId === personaId).length;
-}
-
-// 최신순 정렬 (원본은 건드리지 않음)
-function sortByLatest(list) {
-  return [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+// 최신순 비교 함수 (createdAt이 큰 것이 먼저)
+function byLatest(a, b) {
+  return Date.parse(b.createdAt) - Date.parse(a.createdAt);
 }
 
 // 목록에서 태그를 중복 없이 모으기 (가나다순)
@@ -36,6 +44,34 @@ function collectTags(list) {
 function filterByTags(list, selectedTags) {
   if (selectedTags.length === 0) return list;
   return list.filter((item) => item.tags.some((t) => selectedTags.includes(t)));
+}
+
+// 페르소나 배열 -> { personaId: 이름 } 표 (카드에 페르소나 이름을 보여줄 때 사용)
+function personaNameMap(personaList) {
+  return Object.fromEntries(personaList.map((p) => [p.personaId, p.name]));
+}
+
+// --- 로딩/오류 표시 ---
+
+// 오류 유형별 안내 문구 (errorType은 api.js의 ApiError에 들어 있음)
+const ERROR_MESSAGES = {
+  AlreadyLiked: "이미 공감한 기록입니다",
+  NotFound: "존재하지 않는 경험 기록입니다",
+  ValidationError: "입력 내용을 확인해주세요 (닉네임 2~20자, 내용 10~500자, 공백만 입력 불가)",
+  NetworkError: "서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요",
+  ConfigError: "js/config.js에 API_KEY를 입력해주세요",
+};
+const DEFAULT_ERROR_MESSAGE = "요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요";
+
+function errorMessage(err) {
+  return ERROR_MESSAGES[err && err.errorType] || DEFAULT_ERROR_MESSAGE;
+}
+
+const LOADING_HTML = '<p class="empty">불러오는 중...</p>';
+
+function showError(el, err) {
+  console.error(err);
+  el.innerHTML = `<p class="empty">${esc(errorMessage(err))}</p>`;
 }
 
 // --- 태그 필터 (드롭다운 다중선택, S03/S04에서 재사용) ---
@@ -53,7 +89,7 @@ function setupTagFilter(containerId, allTags, onChange) {
     <ul class="tag-filter-list block" hidden>
       ${
         allTags.length
-          ? allTags.map((t) => `<li><label><input type="checkbox" value="${t}"> ${t}</label></li>`).join("")
+          ? allTags.map((t) => `<li><label><input type="checkbox" value="${esc(t)}"> ${esc(t)}</label></li>`).join("")
           : '<li class="meta">등록된 태그가 없습니다</li>'
       }
     </ul>`;
@@ -74,7 +110,7 @@ function setupTagFilter(containerId, allTags, onChange) {
     list.querySelectorAll("input").forEach((cb) => (cb.checked = selected.has(cb.value)));
     // 선택된 태그는 칩으로 표시, 칩의 x를 누르면 그 태그만 선택 취소
     chips.innerHTML = [...selected]
-      .map((t) => `<button type="button" class="tag tag-chip" data-tag="${t}">${t} ✕</button>`)
+      .map((t) => `<button type="button" class="tag tag-chip" data-tag="${esc(t)}">${esc(t)} ✕</button>`)
       .join("");
     onChange([...selected]);
   }
@@ -116,7 +152,7 @@ function renderLayout() {
   ];
   document.getElementById("site-header").innerHTML = `
     <div class="container">
-      <a class="site-logo" href="index.html">${profile.name}의 자기소개</a>
+      <a class="site-logo" href="index.html">${esc(profile.name)}의 자기소개</a>
       <nav class="site-nav">
         ${links.map(([href, label]) => `<a href="${href}">${label}</a>`).join("")}
       </nav>
@@ -128,38 +164,53 @@ function renderLayout() {
 // 페르소나 카드: 이름, 한 줄 설명, 기록 수, 태그
 function personaCardHtml(p) {
   return `
-    <a class="block" href="persona.html?id=${p.id}">
-      <h3>${p.name}</h3>
-      <p>${p.description}</p>
-      <p class="meta">경험 기록 ${countExperiences(p.id)}개</p>
+    <a class="block" href="persona.html?id=${encodeURIComponent(p.personaId)}">
+      <h3>${esc(p.name)}</h3>
+      <p>${esc(p.description)}</p>
+      <p class="meta">경험 기록 ${p.experienceCount}개</p>
       ${tagsHtml(p.tags)}
     </a>`;
 }
 
 // 경험 기록 카드: 제목, 페르소나, 태그, 공감/조회수
-function experienceCardHtml(e) {
-  const persona = findPersona(e.personaId);
+// personaName: 카드에 보여줄 페르소나 이름 (모르면 빈 문자열)
+function experienceCardHtml(e, personaName = "") {
   return `
-    <a class="block" href="experience.html?id=${e.id}">
-      <h3>${e.title}</h3>
-      <p class="meta">${persona ? persona.name : ""} / ${e.createdAt}</p>
+    <a class="block" href="experience.html?id=${encodeURIComponent(e.experienceId)}">
+      <h3>${esc(e.title)}</h3>
+      <p class="meta">${esc(personaName)} / ${formatDate(e.createdAt)}</p>
       ${tagsHtml(e.tags)}
-      <p class="meta">공감 ${e.likes} / 조회 ${e.views}</p>
+      <p class="meta">공감 ${e.likeCount} / 조회 ${e.viewCount}</p>
     </a>`;
 }
 
 // --- 화면별 렌더링 ---
 
-// S01 Home
-function renderHome() {
+// S01 Home: listPersonas + listRecentExperiences(3)
+async function renderHome() {
   document.getElementById("home-intro").textContent = profile.intro;
   document.getElementById("home-image").src = profile.image;
-  document.getElementById("home-personas").innerHTML = personas.map(personaCardHtml).join("");
-  document.getElementById("home-recent").innerHTML =
-    sortByLatest(experiences).slice(0, 3).map(experienceCardHtml).join("");
+
+  const personaBox = document.getElementById("home-personas");
+  const recentBox = document.getElementById("home-recent");
+  personaBox.innerHTML = LOADING_HTML;
+  recentBox.innerHTML = LOADING_HTML;
+
+  try {
+    const [personas, recent] = await Promise.all([api.listPersonas(), api.listRecentExperiences(3)]);
+    const nameOf = personaNameMap(personas);
+    personaBox.innerHTML =
+      personas.map(personaCardHtml).join("") || '<p class="empty">아직 등록된 페르소나가 없습니다</p>';
+    recentBox.innerHTML =
+      recent.map((e) => experienceCardHtml(e, nameOf[e.personaId])).join("") ||
+      '<p class="empty">아직 등록된 경험 기록이 없습니다</p>';
+  } catch (err) {
+    showError(personaBox, err);
+    recentBox.innerHTML = "";
+  }
 }
 
-// S02 소개
+// S02 소개 (API 없이 data.js의 profile 사용)
 function renderAbout() {
   document.getElementById("about-image").src = profile.image;
   document.getElementById("about-name").textContent = profile.name;
@@ -169,50 +220,115 @@ function renderAbout() {
   document.getElementById("about-dislikes").innerHTML = tagsHtml(profile.dislikes);
 }
 
-// S03 페르소나 목록 (태그 필터: 다중선택, 선택한 태그 중 하나라도 있으면 표시)
-function renderPersonaList() {
+// S03 페르소나 목록: listPersonas (태그 필터: 다중선택, 선택한 태그 중 하나라도 있으면 표시)
+async function renderPersonaList() {
+  const listBox = document.getElementById("persona-list");
+  listBox.innerHTML = LOADING_HTML;
+
+  let personas;
+  try {
+    personas = await api.listPersonas();
+  } catch (err) {
+    showError(listBox, err);
+    return;
+  }
+
   setupTagFilter("tag-filter", collectTags(personas), (selectedTags) => {
     const shown = filterByTags(personas, selectedTags);
-    document.getElementById("persona-list").innerHTML =
+    listBox.innerHTML =
       shown.map(personaCardHtml).join("") || '<p class="empty">선택한 태그의 페르소나가 없습니다</p>';
   });
 }
 
-// S04 페르소나 상세 (정렬: 최신순/공감순, 처음 5개 -> 더보기 시 10개, 태그 필터)
-function renderPersonaDetail() {
-  const persona = findPersona(getParam("id"));
+// S04 페르소나 상세: getPersona + listExperiencesByPersona(nextToken으로 전부 받기)
+// 정렬/페이지 나누기는 모두 프론트에서 처리한다.
+//   정렬: 최신순 / 공감순(동률이면 최신순)
+//   처음에는 5개만 보여주고, "더보기"를 누르면 10개씩 페이지로 나눠서 보여준다
+const FIRST_COUNT = 5; // 처음 보여줄 개수
+const PAGE_SIZE = 10;  // 더보기 이후 한 페이지 개수
+
+// 정렬 (원본은 건드리지 않음)
+function sortExperiences(list, sortBy) {
+  const sorted = [...list].sort(byLatest);
+  if (sortBy === "likes") {
+    // 공감 많은 순, 동률이면 최신순
+    sorted.sort((a, b) => b.likeCount - a.likeCount || byLatest(a, b));
+  }
+  return sorted;
+}
+
+async function renderPersonaDetail() {
+  const detailBox = document.getElementById("persona-detail");
+  const listBox = document.getElementById("experience-list");
+  detailBox.innerHTML = LOADING_HTML;
+
+  // 페르소나 정보
+  let persona;
+  try {
+    persona = await api.getPersona(getParam("id"));
+  } catch (err) {
+    showError(detailBox, err);
+    return;
+  }
   if (!persona) {
-    document.getElementById("persona-detail").innerHTML = '<p class="empty">존재하지 않는 페르소나입니다</p>';
+    detailBox.innerHTML = '<p class="empty">존재하지 않는 페르소나입니다</p>';
     return;
   }
 
-  document.getElementById("persona-detail").innerHTML = `
-    <h1>${persona.name}</h1>
+  detailBox.innerHTML = `
+    <h1>${esc(persona.name)}</h1>
     <div class="persona-desc">
-      <p>${persona.description}</p>
+      <p>${esc(persona.description)}</p>
     </div>
-    <p class="meta">생성일 ${persona.createdAt}</p>
+    <p class="meta">생성일 ${formatDate(persona.createdAt)}</p>
     <div class="persona-tags">
-      ${persona.tags.map((t) => `<span class="btn">#${t}</span>`).join("")}
+      ${persona.tags.map((t) => `<span class="btn">#${esc(t)}</span>`).join("")}
     </div>`;
 
   // 이 페르소나의 경험 기록 전체
-  const myExperiences = experiences.filter((e) => e.personaId === persona.id);
+  listBox.innerHTML = LOADING_HTML;
+  let myExperiences;
+  try {
+    myExperiences = await api.listAllExperiencesByPersona(persona.personaId);
+  } catch (err) {
+    showError(listBox, err);
+    return;
+  }
 
   // 목록 상태 (바뀔 때마다 drawList()로 다시 그림)
-  let sortBy = "latest"; // "latest" 최신순 / "likes" 공감순
-  let limit = 5;         // 처음 5개, 더보기 시 10개
-  let selectedTags = []; // 태그 필터에서 선택한 태그
+  let sortBy = "latest";  // "latest" 최신순 / "likes" 공감순
+  let expanded = false;   // false: 처음 5개만 / true: 10개씩 페이지로 보기
+  let page = 1;           // expanded일 때 현재 페이지
+  let selectedTags = [];  // 태그 필터에서 선택한 태그
+
+  const moreBtn = document.getElementById("more-btn");
+  const pager = document.getElementById("pager");
+
+  // 처음 5개 상태로 되돌리기 (정렬/필터가 바뀔 때 사용)
+  function resetPaging() {
+    expanded = false;
+    page = 1;
+  }
 
   function drawList() {
-    // 태그 필터 -> 정렬 (공감순 동률이면 최신순)
-    const list = sortByLatest(filterByTags(myExperiences, selectedTags));
-    if (sortBy === "likes") list.sort((a, b) => b.likes - a.likes); // sort는 안정 정렬이라 동률은 최신순 유지
+    // 태그 필터 -> 정렬
+    const list = sortExperiences(filterByTags(myExperiences, selectedTags), sortBy);
+
+    // 보여줄 구간 정하기
+    let shown;
+    let pageCount = 1;
+    if (!expanded) {
+      shown = list.slice(0, FIRST_COUNT);
+    } else {
+      pageCount = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+      page = Math.min(page, pageCount);
+      shown = list.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    }
 
     let emptyMsg = "아직 등록된 경험 기록이 없습니다";
     if (myExperiences.length > 0) emptyMsg = "선택한 태그의 경험 기록이 없습니다";
-    document.getElementById("experience-list").innerHTML =
-      list.slice(0, limit).map(experienceCardHtml).join("") || `<p class="empty">${emptyMsg}</p>`;
+    listBox.innerHTML =
+      shown.map((e) => experienceCardHtml(e, persona.name)).join("") || `<p class="empty">${emptyMsg}</p>`;
 
     // 정렬 버튼 (현재 선택 강조)
     document.getElementById("sort-buttons").innerHTML = `
@@ -221,16 +337,36 @@ function renderPersonaDetail() {
     document.querySelectorAll("#sort-buttons button").forEach((btn) => {
       btn.onclick = () => {
         sortBy = btn.dataset.sort;
-        limit = 5; // 정렬 바꾸면 처음 5개부터
+        resetPaging(); // 정렬 바꾸면 처음 5개부터
         drawList();
       };
     });
 
-    // 더보기 버튼 (5개만 보이는 상태에서 더 있을 때만 표시)
-    const moreBtn = document.getElementById("more-btn");
-    moreBtn.hidden = !(limit === 5 && list.length > 5);
+    // 더보기 버튼 (처음 5개 상태이고 더 있을 때만 표시)
+    moreBtn.hidden = expanded || list.length <= FIRST_COUNT;
     moreBtn.onclick = () => {
-      limit = 10;
+      expanded = true;
+      page = 1;
+      drawList();
+    };
+
+    // 페이지 버튼 (더보기 이후, 페이지가 2개 이상일 때만 표시)
+    if (expanded && pageCount > 1) {
+      let html = `<button class="btn" data-page="${page - 1}" ${page === 1 ? "disabled" : ""}>이전</button>`;
+      for (let i = 1; i <= pageCount; i++) {
+        html += `<button class="btn" data-page="${i}" ${i === page ? 'aria-pressed="true"' : ""}>${i}</button>`;
+      }
+      html += `<button class="btn" data-page="${page + 1}" ${page === pageCount ? "disabled" : ""}>다음</button>`;
+      pager.innerHTML = html;
+      pager.hidden = false;
+    } else {
+      pager.innerHTML = "";
+      pager.hidden = true;
+    }
+    pager.onclick = (ev) => {
+      const btn = ev.target.closest("button[data-page]");
+      if (!btn || btn.disabled) return;
+      page = Number(btn.dataset.page);
       drawList();
     };
   }
@@ -238,108 +374,207 @@ function renderPersonaDetail() {
   // 태그 필터: 선택이 바뀌면 처음 5개부터 다시 그림 (처음 호출 때 drawList()도 같이 실행됨)
   setupTagFilter("experience-tag-filter", collectTags(myExperiences), (tags) => {
     selectedTags = tags;
-    limit = 5;
+    resetPaging();
     drawList();
   });
 }
 
-// S05 상황/과정/결과를 세로 타임라인으로 그린다
-// 내용이 비어 있는 단계는 건너뛰고, 마지막 단계는 CSS(:last-child)에서 포인트 색으로 강조
-function timelineHtml(e) {
-  const steps = [
-    { label: "상황", text: e.situation },
-    { label: "과정", text: e.attempt },
-    { label: "결과", text: e.result },
-  ];
+// S05 경험 기록의 content를 세로 타임라인으로 그린다
+// content에 "상황: ..." / "과정: ..." / "결과: ..." 줄이 있으면 단계별로 나누고,
+// 마지막 단계는 CSS(:last-child)에서 포인트 색으로 강조한다.
+// 이 라벨이 하나도 없으면 content 전체를 일반 본문으로 보여준다.
+function timelineHtml(content) {
+  const steps = [];  // { label, text }
+  const plain = [];  // 첫 라벨 앞에 있거나 라벨이 없는 줄
+  (content || "").split(/\r?\n/).forEach((line) => {
+    const m = line.match(/^\s*(상황|과정|결과)\s*[:：]\s*(.*)$/);
+    if (m) steps.push({ label: m[1], text: m[2] });
+    else if (line.trim() !== "") {
+      if (steps.length > 0) steps[steps.length - 1].text += "\n" + line; // 앞 단계의 이어지는 줄
+      else plain.push(line);
+    }
+  });
+
+  const intro = plain.length ? `<section class="block"><p class="pre-line">${esc(plain.join("\n"))}</p></section>` : "";
   const items = steps
-    .filter((s) => s.text && s.text.trim() !== "")
+    .filter((s) => s.text.trim() !== "")
     .map(
       (s) => `
         <li class="timeline-item">
-          <span class="timeline-label">${s.label}</span>
-          <p class="timeline-text">${s.text}</p>
+          <span class="timeline-label">${esc(s.label)}</span>
+          <p class="timeline-text pre-line">${esc(s.text)}</p>
         </li>`
     )
     .join("");
-  // 모든 단계가 비어 있으면 타임라인 자체를 그리지 않음
-  return items ? `<ol class="timeline block">${items}</ol>` : "";
+  return intro + (items ? `<ol class="timeline block">${items}</ol>` : "");
 }
 
-function renderExperienceDetail() {
-  const e = experiences.find((x) => x.id === getParam("id"));
-  if (!e) {
-    document.getElementById("experience-detail").innerHTML = '<p class="empty">존재하지 않는 경험 기록입니다</p>';
+// S05 경험기록 상세: increaseViewCount 결과로 표시 + hasLiked/likeExperience
+async function renderExperienceDetail() {
+  const box = document.getElementById("experience-detail");
+  const notFoundHtml = `<p class="empty">${ERROR_MESSAGES.NotFound}</p>`;
+  const experienceId = getParam("id");
+  if (!experienceId) {
+    box.innerHTML = notFoundHtml;
     return;
   }
-  const persona = findPersona(e.personaId);
-  const likeKey = "liked_" + e.id;
+  box.innerHTML = LOADING_HTML;
 
-  // 이 단계는 서버가 없으므로 공감 수 = 더미 데이터 값 + (내가 눌렀으면 1)
+  // 조회수 +1 하고 Experience 전체를 받아서 상세로 표시 (없는 ID면 NotFound 오류)
+  let e;
+  try {
+    e = await api.increaseViewCount(experienceId);
+  } catch (err) {
+    if (err.errorType === "NotFound") box.innerHTML = notFoundHtml;
+    else showError(box, err);
+    return;
+  }
+  if (!e) {
+    box.innerHTML = notFoundHtml;
+    return;
+  }
+
+  // 페르소나 이름과 공감 여부 (둘 다 실패해도 상세는 보여줌)
+  const [persona, likedBefore] = await Promise.all([
+    api.getPersona(e.personaId).catch(() => null),
+    api.hasLiked(e.experienceId).catch(() => false),
+  ]);
+  let liked = likedBefore; // 이 브라우저(visitorId)가 이미 공감했는지
+  let message = "";        // 공감 버튼 아래 안내 문구
+
   function draw() {
-    const liked = localStorage.getItem(likeKey) === "1";
-    document.getElementById("experience-detail").innerHTML = `
+    const period = `${e.startDate} ~ ${e.endDate || "진행 중"}`;
+    box.innerHTML = `
       <!-- 섹션: 제목 ~ 경험 기간 -->
       <section class="page-section">
-        <h1>${e.title}</h1>
+        <h1>${esc(e.title)}</h1>
         <p class="meta">
-          <a href="persona.html?id=${e.personaId}">${persona ? persona.name : ""}</a>
-          / 생성일 ${e.createdAt} / 경험 기간 ${e.period}
+          <a href="persona.html?id=${encodeURIComponent(e.personaId)}">${esc(persona ? persona.name : "")}</a>
+          / 생성일 ${formatDate(e.createdAt)} / 경험 기간 ${esc(period)}
         </p>
       </section>
       <div style="margin-top:16px">${tagsHtml(e.tags)}</div>
 
-      ${timelineHtml(e)}
+      ${timelineHtml(e.content)}
 
-      <p class="meta" style="margin-top:16px">공감 ${e.likes + (liked ? 1 : 0)} / 조회 ${e.views}</p>
-      <button id="like-btn" class="btn" ${liked ? 'aria-pressed="true"' : ""}>
-        ${liked ? "공감 취소" : "공감하기"}
-      </button>`;
-    // 누를 때마다 공감 <-> 취소 전환
-    document.getElementById("like-btn").onclick = () => {
-      if (liked) localStorage.removeItem(likeKey);
-      else localStorage.setItem(likeKey, "1");
-      draw();
-    };
+      <p class="meta" style="margin-top:16px">공감 ${e.likeCount} / 조회 ${e.viewCount}</p>
+      <!-- 이미 공감했으면 버튼 비활성화 + 안내 문구 -->
+      <button id="like-btn" class="btn" ${liked ? "disabled" : ""}>
+        ${liked ? ERROR_MESSAGES.AlreadyLiked : "공감하기"}
+      </button>
+      <p class="meta" style="margin-top:8px">${esc(message)}</p>`;
+
+    if (!liked) document.getElementById("like-btn").onclick = onLike;
   }
+
+  async function onLike() {
+    document.getElementById("like-btn").disabled = true; // 중복 클릭 방지
+    message = "";
+    try {
+      const updated = await api.likeExperience(e.experienceId); // 갱신된 Experience 반환
+      if (updated) e = updated;
+      liked = true;
+    } catch (err) {
+      if (err.errorType === "AlreadyLiked") liked = true; // 버튼 문구가 안내를 대신함
+      else message = errorMessage(err);
+    }
+    draw();
+  }
+
   draw();
 }
 
-// S06 질문함
-function renderQuestions() {
-  // 페르소나 선택지
-  document.getElementById("q-persona").innerHTML =
-    '<option value="">선택하세요</option>' +
-    personas.map((p) => `<option value="${p.id}">${p.name}</option>`).join("");
+// S06 질문함: listAnsweredQuestions(페르소나 필터, nextToken 더보기) + createQuestion
+async function renderQuestions() {
+  const personaSelect = document.getElementById("q-persona");
+  const filterSelect = document.getElementById("q-filter");
+  const listBox = document.getElementById("q-list");
+  const moreBtn = document.getElementById("q-more-btn");
+  const msg = document.getElementById("q-message");
+  listBox.innerHTML = LOADING_HTML;
 
-  // 답변완료 질문만 최신순으로 공개
-  const answered = sortByLatest(questions.filter((q) => q.status === "답변완료"));
-  document.getElementById("q-list").innerHTML =
-    answered
-      .map((q) => {
-        const persona = findPersona(q.personaId);
-        return `
-          <section class="block" style="margin-bottom:16px">
-            <p class="meta">${q.nickname} / ${persona ? persona.name : ""} / ${q.createdAt}</p>
-            <p><b>Q.</b> ${q.content}</p>
-            <p><b>A.</b> ${q.answer}</p>
-          </section>`;
-      })
-      .join("") || '<p class="empty">아직 답변완료된 질문이 없습니다</p>';
+  // 페르소나 선택지 (작성 폼 + 목록 필터에서 같이 사용)
+  let personas;
+  try {
+    personas = await api.listPersonas();
+  } catch (err) {
+    showError(listBox, err);
+    msg.textContent = errorMessage(err);
+    return;
+  }
+  const nameOf = personaNameMap(personas);
+  const options = personas.map((p) => `<option value="${esc(p.personaId)}">${esc(p.name)}</option>`).join("");
+  personaSelect.innerHTML = '<option value="">선택하세요</option>' + options;
+  filterSelect.innerHTML = '<option value="">전체</option>' + options;
 
-  // 작성 폼 제출: 검증만 하고, 저장은 다음 주차(AppSync/DynamoDB)에 구현
-  document.getElementById("q-form").onsubmit = (ev) => {
+  // 답변완료 질문 목록 (서버가 최신순으로 반환)
+  let nextToken = null; // 다음 페이지 토큰 (null이면 마지막)
+  let requestNo = 0;    // 필터를 빠르게 바꿨을 때 늦게 온 이전 응답을 버리기 위한 번호
+
+  function questionHtml(q) {
+    return `
+      <section class="block" style="margin-bottom:16px">
+        <p class="meta">${esc(q.nickname)} / ${esc(nameOf[q.personaId] || "")} / ${formatDate(q.createdAt)}</p>
+        <p class="pre-line"><b>Q.</b> ${esc(q.content)}</p>
+        <p class="pre-line"><b>A.</b> ${esc(q.answer)}</p>
+      </section>`;
+  }
+
+  // append=false: 처음부터 다시 불러오기 / append=true: 다음 페이지를 아래에 덧붙이기
+  async function loadQuestions(append) {
+    const myNo = ++requestNo;
+    moreBtn.disabled = true;
+    if (!append) {
+      listBox.innerHTML = LOADING_HTML;
+      nextToken = null;
+      moreBtn.hidden = true;
+    }
+    try {
+      const page = await api.listAnsweredQuestions(filterSelect.value, undefined, append ? nextToken : null);
+      if (myNo !== requestNo) return;
+      nextToken = page.nextToken;
+      const html = page.items.map(questionHtml).join("");
+      if (append) listBox.insertAdjacentHTML("beforeend", html);
+      else listBox.innerHTML = html || (nextToken ? "" : '<p class="empty">아직 답변완료된 질문이 없습니다</p>');
+      moreBtn.hidden = !nextToken;
+    } catch (err) {
+      if (myNo !== requestNo) return;
+      if (append) msg.textContent = errorMessage(err);
+      else showError(listBox, err);
+    } finally {
+      if (myNo === requestNo) moreBtn.disabled = false;
+    }
+  }
+
+  filterSelect.onchange = () => loadQuestions(false);
+  moreBtn.onclick = () => loadQuestions(true);
+  loadQuestions(false);
+
+  // 작성 폼 제출: 화면에서 먼저 검사하고, 통과하면 createQuestion 호출
+  document.getElementById("q-form").onsubmit = async (ev) => {
     ev.preventDefault();
+    const form = ev.target;
+    const submitBtn = form.querySelector('button[type="submit"]');
     const nickname = document.getElementById("q-nickname").value.trim();
-    const personaId = document.getElementById("q-persona").value;
+    const personaId = personaSelect.value;
     const content = document.getElementById("q-content").value.trim(); // 공백만 입력 방지
-    const msg = document.getElementById("q-message");
 
     if (nickname.length < 2 || nickname.length > 20) return (msg.textContent = "닉네임은 2~20자로 입력해주세요");
     if (!personaId) return (msg.textContent = "페르소나를 선택해주세요");
     if (content.length < 10 || content.length > 500) return (msg.textContent = "내용은 10~500자로 입력해주세요");
 
-    msg.textContent = "질문이 등록되었습니다 (이번 주는 저장되지 않는 화면 틀입니다)";
-    ev.target.reset();
+    submitBtn.disabled = true; // 중복 등록 방지
+    msg.textContent = "등록 중...";
+    try {
+      await api.createQuestion({ nickname, personaId, content });
+      msg.textContent = "질문이 등록되었습니다. 답변이 완료되면 아래 목록에 공개됩니다";
+      form.reset();
+    } catch (err) {
+      console.error(err);
+      msg.textContent = errorMessage(err); // ValidationError 등
+    } finally {
+      submitBtn.disabled = false;
+    }
   };
 }
 

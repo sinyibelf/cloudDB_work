@@ -1,0 +1,75 @@
+type Persona {
+  personaId: ID!
+  name: String!
+  description: String!
+  tags: [String]
+  experienceCount: Int
+  createdAt: AWSDateTime!
+}
+
+type Experience {
+  experienceId: ID!
+  personaId: ID!
+  title: String!
+  content: String!
+  startDate: AWSDate!
+  endDate: AWSDate
+  tags: [String]
+  likeCount: Int!
+  viewCount: Int!
+  createdAt: AWSDateTime!
+}
+
+type ExperienceConnection {
+  items: [Experience]
+  nextToken: String
+}
+
+enum QuestionStatus {
+  PENDING
+  ANSWERED
+  HIDDEN
+}
+
+type Question {
+  questionId: ID!
+  nickname: String!
+  personaId: ID!
+  content: String!
+  status: QuestionStatus!
+  answer: String
+  createdAt: AWSDateTime!
+  answeredAt: AWSDateTime
+}
+
+type QuestionConnection {
+  items: [Question]
+  nextToken: String
+}
+
+input CreateQuestionInput {
+  nickname: String!
+  personaId: ID!
+  content: String!
+}
+
+type Query {
+  listPersonas: [Persona]
+  getPersona(personaId: ID!): Persona
+  listExperiencesByPersona(personaId: ID!, limit: Int, nextToken: String): ExperienceConnection
+  listRecentExperiences(limit: Int): [Experience]
+  getExperience(experienceId: ID!): Experience
+  hasLiked(experienceId: ID!, visitorId: ID!): Boolean
+  listAnsweredQuestions(personaId: ID, limit: Int, nextToken: String): QuestionConnection
+}
+
+type Mutation {
+  increaseViewCount(experienceId: ID!): Experience
+  likeExperience(experienceId: ID!, visitorId: ID!): Experience
+  createQuestion(input: CreateQuestionInput!): Question
+}
+
+schema {
+  query: Query
+  mutation: Mutation
+}
