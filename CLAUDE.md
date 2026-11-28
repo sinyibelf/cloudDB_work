@@ -10,7 +10,7 @@
 - S3: 정적 파일 저장. 버킷 비공개, OAC로 CloudFront만 접근
 - CloudFront: CDN, HTTPS 진입점
 - AppSync (GraphQL): 방문자는 API Key, 관리자는 Cognito 토큰
-- DynamoDB: Persona / Experience / Question 테이블, GSI 사용
+- DynamoDB: DB_Persona / DB_Experience / DB_Like / DB_Question 테이블, GSI byPersona, byStatus
 - Cognito: 관리자(나) 로그인
 - Lambda + SNS: 새 질문 등록 시 이메일 알림
 

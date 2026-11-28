@@ -412,10 +412,15 @@ function timelineHtml(content) {
 // S05 경험기록 상세: increaseViewCount 결과로 표시 + hasLiked/likeExperience
 async function renderExperienceDetail() {
   const box = document.getElementById("experience-detail");
-  const notFoundHtml = `<p class="empty">${ERROR_MESSAGES.NotFound}</p>`;
+  // 없는 기록이면 안내 문구를 보여주고 2초 뒤 페르소나 목록으로 이동
+  function showNotFound() {
+    box.innerHTML = '<p class="empty">존재하지 않거나 삭제된 기록입니다</p>';
+    setTimeout(() => (location.href = "personas.html"), 2000);
+  }
+
   const experienceId = getParam("id");
   if (!experienceId) {
-    box.innerHTML = notFoundHtml;
+    showNotFound();
     return;
   }
   box.innerHTML = LOADING_HTML;
@@ -425,12 +430,12 @@ async function renderExperienceDetail() {
   try {
     e = await api.increaseViewCount(experienceId);
   } catch (err) {
-    if (err.errorType === "NotFound") box.innerHTML = notFoundHtml;
+    if (err.errorType === "NotFound") showNotFound();
     else showError(box, err);
     return;
   }
   if (!e) {
-    box.innerHTML = notFoundHtml;
+    showNotFound();
     return;
   }
 
@@ -440,6 +445,7 @@ async function renderExperienceDetail() {
     api.hasLiked(e.experienceId).catch(() => false),
   ]);
   let liked = likedBefore; // 이 브라우저(visitorId)가 이미 공감했는지
+  let justLiked = false;   // 이번에 방금 공감 성공했는지 (버튼 문구 구분용)
   let message = "";        // 공감 버튼 아래 안내 문구
 
   function draw() {
@@ -458,9 +464,9 @@ async function renderExperienceDetail() {
       ${timelineHtml(e.content)}
 
       <p class="meta" style="margin-top:16px">공감 ${e.likeCount} / 조회 ${e.viewCount}</p>
-      <!-- 이미 공감했으면 버튼 비활성화 + 안내 문구 -->
+      <!-- 공감 성공: "공감함" / 이미 공감(AlreadyLiked, hasLiked true): "이미 공감한 기록입니다" (둘 다 비활성화) -->
       <button id="like-btn" class="btn" ${liked ? "disabled" : ""}>
-        ${liked ? ERROR_MESSAGES.AlreadyLiked : "공감하기"}
+        ${liked ? (justLiked ? "공감함" : ERROR_MESSAGES.AlreadyLiked) : "공감하기"}
       </button>
       <p class="meta" style="margin-top:8px">${esc(message)}</p>`;
 
@@ -474,8 +480,10 @@ async function renderExperienceDetail() {
       const updated = await api.likeExperience(e.experienceId); // 갱신된 Experience 반환
       if (updated) e = updated;
       liked = true;
+      justLiked = true; // 방금 공감 성공 -> "공감함"
     } catch (err) {
-      if (err.errorType === "AlreadyLiked") liked = true; // 버튼 문구가 안내를 대신함
+      if (err.errorType === "AlreadyLiked") liked = true; // "이미 공감한 기록입니다"
+      else if (err.errorType === "NotFound") return showNotFound(); // 그 사이 삭제된 기록
       else message = errorMessage(err);
     }
     draw();
